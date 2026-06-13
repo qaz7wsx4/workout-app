@@ -220,26 +220,44 @@ var FALLBACK=[{name:'課表 A：輕鬆 / 恢復',exercises:[
 ]}];
 function todayKey(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function pad(n){return String(n).padStart(2,'0');}
-var audioCtx=null;
+var audioCtx=null,silentNode=null;
 function getAudioCtx(){
   if(!audioCtx){audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
   return audioCtx;
 }
-// 解鎖 AudioContext（iOS 需要在使用者點擊時初始化）
-document.addEventListener('touchstart',function(){try{getAudioCtx();}catch(e){}},{once:true});
+// 使用者第一次觸碰時解鎖 AudioContext
+document.addEventListener('touchstart',function(){
+  try{
+    var ctx=getAudioCtx();
+    if(ctx.state==='suspended')ctx.resume();
+  }catch(e){}
+},{once:true});
+// 播放無聲循環音，讓 AudioContext 在背景保持運行
+function startKeepAlive(){
+  try{
+    var ctx=getAudioCtx();
+    if(ctx.state==='suspended')ctx.resume();
+    var buf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);
+    silentNode=ctx.createBufferSource();
+    silentNode.buffer=buf;
+    silentNode.loop=true;
+    silentNode.connect(ctx.destination);
+    silentNode.start();
+  }catch(e){}
+}
+function stopKeepAlive(){
+  try{if(silentNode){silentNode.stop();silentNode=null;}}catch(e){}
+}
 function beep(){
   try{
     var ctx=getAudioCtx();
-    var resume=ctx.state==='suspended'?ctx.resume():Promise.resolve();
-    resume.then(function(){
-      var o=ctx.createOscillator();
-      var g=ctx.createGain();
-      o.connect(g);g.connect(ctx.destination);
-      o.frequency.value=880;
-      g.gain.setValueAtTime(0.3,ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
-      o.start(ctx.currentTime);o.stop(ctx.currentTime+0.15);
-    });
+    var o=ctx.createOscillator();
+    var g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.frequency.value=880;
+    g.gain.setValueAtTime(0.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    o.start(ctx.currentTime);o.stop(ctx.currentTime+0.15);
   }catch(e){}
 }
 function init(){
@@ -326,6 +344,7 @@ function startTimer(secs,exIdx){
   document.getElementById('tnum').textContent=secs;
   document.getElementById('tnum').classList.remove('urgent');
   document.getElementById('tbg').classList.add('open');
+  startKeepAlive();
   timerInt=setInterval(function(){
     var left=Math.ceil((timerEnd-Date.now())/1000);
     if(left<0)left=0;
@@ -338,6 +357,7 @@ function startTimer(secs,exIdx){
 function stopTimer(auto){
   clearInterval(timerInt);
   timerEnd=0;
+  stopKeepAlive();
   document.getElementById('tbg').classList.remove('open');
 }
 function renderSchedule(){
