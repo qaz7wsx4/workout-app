@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -196,7 +197,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 </div>
 <div class="toast" id="toast"></div>
 <script>
-var CIRC=2*Math.PI*88,plans=[],curPlan=0,done={},sch=JSON.parse(localStorage.getItem('sch')||'[]'),csvUrl=localStorage.getItem('csvUrl')||'',selDate=todayKey(),timerInt=null,timerTot=0;
+var CIRC=2*Math.PI*88,plans=[],curPlan=0,done={},sch=JSON.parse(localStorage.getItem('sch')||'[]'),csvUrl=localStorage.getItem('csvUrl')||'',selDate=todayKey(),timerInt=null,timerTot=0,timerEnd=0;
+// 回到 App 時補回計時差值
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&timerEnd>0){
+    var left=Math.ceil((timerEnd-Date.now())/1000);
+    if(left<=0){stopTimer(true);}
+    else{
+      document.getElementById('tnum').textContent=left;
+      document.getElementById('ringfg').style.strokeDashoffset=CIRC*(1-left/timerTot);
+      if(left<=5)document.getElementById('tnum').classList.add('urgent');
+    }
+  }
+});
 var FALLBACK=[{name:'課表 A：輕鬆 / 恢復',exercises:[
 {name:'Bio Force 直臂/肩胛下壓',sets:'3 組 × 12 次',tool:'高位滑輪（極輕重量）',goal:'建構引體向上地基',rest:60,tip:'雙臂完全伸直不彎曲。純粹用「壓低肩膀、收緊腋下」的力量帶動 5~10 公分，啟動下斜方肌。'},
 {name:'Bio Force 機械胸推',sets:'3 組 × 12 次',tool:'中位滑輪（25 磅）',goal:'上肢前側推力',rest:90,tip:'推起 2 秒、下放 2 秒。全程不發抖，手腕保持中立。'},
@@ -207,6 +220,18 @@ var FALLBACK=[{name:'課表 A：輕鬆 / 恢復',exercises:[
 ]}];
 function todayKey(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function pad(n){return String(n).padStart(2,'0');}
+function beep(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var o=ctx.createOscillator();
+    var g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.frequency.value=880;
+    g.gain.setValueAtTime(0.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    o.start(ctx.currentTime);o.stop(ctx.currentTime+0.15);
+  }catch(e){}
+}
 function init(){
   plans=FALLBACK;
   if(csvUrl){document.getElementById('csvdisp').textContent=csvUrl.length>40?csvUrl.slice(0,40)+'…':csvUrl;document.getElementById('csvinput').value=csvUrl;fetchCSV(false);}
@@ -269,24 +294,42 @@ function updateProg(){
   document.getElementById('plbl').textContent=cnt+' / '+total+' 動作完成';
 }
 function resetProg(){done={};renderEx();updateProg();toast('進度已重置');}
+function requestNotifPerm(){
+  if('Notification' in window&&Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+}
+function sendNotif(name){
+  if('Notification' in window&&Notification.permission==='granted'){
+    try{new Notification('休息結束！',{body:name?'繼續：'+name:'繼續下一組',icon:'icons/icon-192.png',silent:false});}catch(e){}
+  }
+}
 function startTimer(secs,exIdx){
-  clearInterval(timerInt);timerTot=secs;var left=secs;
+  clearInterval(timerInt);
+  timerTot=secs;
+  timerEnd=Date.now()+secs*1000;
+  requestNotifPerm();
   var ring=document.getElementById('ringfg');
   ring.style.strokeDasharray=CIRC;ring.style.strokeDashoffset=0;
   var p=plans[curPlan],name=p&&p.exercises[exIdx]?p.exercises[exIdx].name:'';
   document.getElementById('tex').textContent=name;
-  document.getElementById('tnum').textContent=left;
+  document.getElementById('tnum').textContent=secs;
   document.getElementById('tnum').classList.remove('urgent');
   document.getElementById('tbg').classList.add('open');
   timerInt=setInterval(function(){
-    left--;
+    var left=Math.ceil((timerEnd-Date.now())/1000);
+    if(left<0)left=0;
     document.getElementById('tnum').textContent=left;
     ring.style.strokeDashoffset=CIRC*(1-left/timerTot);
-    if(left<=5)document.getElementById('tnum').classList.add('urgent');
-    if(left<=0)stopTimer();
-  },1000);
+    if(left<=5&&left>0){document.getElementById('tnum').classList.add('urgent');beep();}
+    if(left<=0){stopTimer(true);sendNotif(name);}
+  },500);
 }
-function stopTimer(){clearInterval(timerInt);document.getElementById('tbg').classList.remove('open');}
+function stopTimer(auto){
+  clearInterval(timerInt);
+  timerEnd=0;
+  document.getElementById('tbg').classList.remove('open');
+}
 function renderSchedule(){
   var now=new Date();
   document.getElementById('schmon').textContent=now.getFullYear()+' 年 '+(now.getMonth()+1)+' 月';
