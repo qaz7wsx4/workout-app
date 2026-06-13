@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -362,17 +363,13 @@ const FALLBACK_PLANS = [
 // ── Init ──
 function init() {
   plans = FALLBACK_PLANS;
-  // Apply first plan immediately so UI is never empty
-  const p = plans[0];
-  document.getElementById('workout-title').textContent = p.name;
-  document.getElementById('workout-subtitle').textContent = p.exercises.length + ' 個動作';
-  renderWorkout();
-  renderSchedule();
   if (csvUrl) {
     document.getElementById('csv-url-display').textContent = csvUrl.length > 40 ? csvUrl.slice(0,40)+'…' : csvUrl;
     document.getElementById('csv-url-input').value = csvUrl;
     fetchCSV(false);
   }
+  renderWorkout();
+  renderSchedule();
 }
 
 // ── CSV fetch ──
